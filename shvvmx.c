@@ -100,8 +100,13 @@ ShvVmxMtrrAdjustEffectiveMemoryType (
                 (LargePageAddress <= VpData->MtrrData[i].PhysicalAddressMax))
             {
                 //
-                // Override candidate type with MTRR type
+                // UC (0) always wins per Intel SDM §12.11.4.1.
+                // If ANY overlapping MTRR is UC, the result is UC.
                 //
+                if (VpData->MtrrData[i].Type == MTRR_TYPE_UC)
+                {
+                    return MTRR_TYPE_UC;
+                }
                 CandidateMemoryType = VpData->MtrrData[i].Type;
             }
         }
@@ -121,6 +126,14 @@ ShvVmxEptInitialize (
     UINT32 i, j;
     VMX_PDPTE tempEpdpte;
     VMX_LARGE_PDE tempEpde;
+
+    //
+    // Read the MTRR default memory type. On most modern systems this is UC (0).
+    // SimpleVisor originally hardcoded WB as the candidate, which is WRONG —
+    // any address range not covered by a variable MTRR must use the default
+    // type, not WB. Using WB on MMIO causes Machine Check Exceptions.
+    //
+    UINT32 defaultMemoryType = (UINT32)(__readmsr(MTRR_MSR_DEFAULT) & 0xFF);
 
     //
     // Fill out the EPML4E which covers the first 512GB of RAM
@@ -169,7 +182,7 @@ ShvVmxEptInitialize (
             VpData->Epde[i][j].PageFrameNumber = (i * 512) + j;
             VpData->Epde[i][j].Type = ShvVmxMtrrAdjustEffectiveMemoryType(VpData,
                                                                           VpData->Epde[i][j].PageFrameNumber * _2MB,
-                                                                          MTRR_TYPE_WB);
+                                                                          defaultMemoryType);
         }
     }
 }
@@ -213,7 +226,10 @@ ShvVmxEnterRootModeOnVp (
         ((VpData->MsrData[12].QuadPart & VMX_EPT_2MB_PAGE_BIT) != 0))
     {
         //
-        // Enable EPT if these features are supported
+        // Enable EPT + VPID. EPT is REQUIRED on Alder Lake because
+        // CR3 load/store exiting is must-be-1, but with EPT enabled
+        // those bits are ignored (Intel SDM §25.6.7). Without EPT,
+        // every CR3 write causes an unhandled exit.
         //
         VpData->EptControls = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID;
     }

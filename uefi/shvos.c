@@ -42,9 +42,14 @@ Environment:
 #include <Protocol/MpService.h>
 
 //
-// Variable Arguments (CRT)
+// Base intrinsics (AsmReadTr, AsmReadLdtr, AsmWriteGdtr)
 //
-#include <varargs.h>
+#include <Library/BaseLib.h>
+
+//
+// Print support (CatVSPrint)
+//
+#include <Library/PrintLib.h>
 
 //
 // External SimpleVisor Headers
@@ -375,22 +380,27 @@ UefiMain (
     )
 {
     EFI_STATUS efiStatus;
+    Print(L"[SimpleVisor] Starting...\r\n");
 
-    //
-    // Find the PI MpService protocol used for multi-processor startup
-    //
     efiStatus = gBS->LocateProtocol(&gEfiMpServiceProtocolGuid,
                                     NULL,
                                     &_gPiMpService);
     if (EFI_ERROR(efiStatus))
     {
-        Print(L"Unable to locate the MpServices protocol: %r\n", efiStatus);
+        Print(L"[SimpleVisor] MpServices not found: %r\r\n", efiStatus);
         return efiStatus;
     }
 
-    //
-    // Call the hypervisor entrypoint
-    //
-    return ShvOsErrorToError(ShvLoad());
+    efiStatus = ShvOsErrorToError(ShvLoad());
+    if (EFI_ERROR(efiStatus))
+    {
+        Print(L"[SimpleVisor] FAILED: %r\r\n", efiStatus);
+    }
+    else
+    {
+        Print(L"[SimpleVisor] Hypervisor installed!\r\n");
+    }
+
+    return EFI_NOT_FOUND;
 }
 

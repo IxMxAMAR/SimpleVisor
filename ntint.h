@@ -24,6 +24,38 @@ Environment:
 #pragma warning(disable:4201)
 #pragma warning(disable:4214)
 
+#if defined(MDE_CPU_X64) || defined(MDE_CPU_IA32) || defined(__BASE_H__)
+//
+// EDK2 mode — Base.h already defines VOID, TRUE, FALSE, etc.
+// Only define what EDK2 doesn't provide.
+//
+#define DECLSPEC_ALIGN(x)           __declspec(align(x))
+#define DECLSPEC_NORETURN           __declspec(noreturn)
+#define FORCEINLINE                 __forceinline
+#define C_ASSERT(x)                 static_assert(x, #x)
+#define UNREFERENCED_PARAMETER(x)   (x)
+
+//
+// C standard types not provided by EDK2 — map to UEFI equivalents
+//
+typedef UINTN   size_t;
+typedef UINTN   uintptr_t;
+
+//
+// SAL annotations — not available in EDK2, expand to nothing
+//
+#ifndef _In_
+#define _In_
+#define _In_opt_
+#define _Out_
+#define _Inout_
+#define _Inout_opt_
+#define __cdecl
+#endif
+#else
+//
+// NT driver mode — define everything ourselves
+//
 #define VOID                void
 #define DECLSPEC_ALIGN(x)   __declspec(align(x))
 #define DECLSPEC_NORETURN   __declspec(noreturn)
@@ -34,6 +66,7 @@ Environment:
 #ifndef TRUE
 #define TRUE                1
 #define FALSE               0
+#endif
 #endif
 
 #define KERNEL_STACK_SIZE   24 * 1024

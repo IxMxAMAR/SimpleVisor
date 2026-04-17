@@ -122,22 +122,23 @@ ShvVmxHandleCpuid (
     __cpuidex(cpu_info, (INT32)VpState->VpRegs->Rax, (INT32)VpState->VpRegs->Rcx);
 
     //
-    // Check if this was CPUID 1h, which is the features request.
+    // STEALTH MODE: Hide hypervisor from guest. Do NOT set the hypervisor
+    // present bit — Windows/firmware seeing it will try Hyper-V protocols
+    // we don't support, causing hangs. Also hide VMX capability (ECX bit 5)
+    // so the guest can't try nested VMX.
     //
     if (VpState->VpRegs->Rax == 1)
     {
-        //
-        // Set the Hypervisor Present-bit in RCX, which Intel and AMD have both
-        // reserved for this indication.
-        //
-        cpu_info[2] |= HYPERV_HYPERVISOR_PRESENT_BIT;
+        cpu_info[2] &= ~HYPERV_HYPERVISOR_PRESENT_BIT;  // hide hypervisor
+        cpu_info[2] &= ~0x20;                            // hide VMX
     }
-    else if (VpState->VpRegs->Rax == HYPERV_CPUID_INTERFACE)
+    else if (VpState->VpRegs->Rax >= HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS &&
+             VpState->VpRegs->Rax <= HYPERV_CPUID_MAX)
     {
         //
-        // Return our interface identifier
+        // Zero all Hyper-V CPUID leaves — we're not Hyper-V
         //
-        cpu_info[0] = ' vhS';
+        cpu_info[0] = cpu_info[1] = cpu_info[2] = cpu_info[3] = 0;
     }
 
     //
@@ -202,6 +203,39 @@ ShvVmxHandleExit (
     case EXIT_REASON_XSETBV:
         ShvVmxHandleXsetbv(VpState);
         break;
+    case EXIT_REASON_MSR_READ:
+    {
+        //
+        // Handle MSR reads. Hyper-V synthetic MSRs (0x40000000+) are outside
+        // the MSR bitmap range and always cause exits. Return 0 for unknown
+        // MSRs to prevent the guest from seeing garbage values.
+        //
+        UINT32 msr = (UINT32)VpState->VpRegs->Rcx;
+        if (msr >= 0x40000000 && msr <= 0x400000FF)
+        {
+            VpState->VpRegs->Rax = 0;
+            VpState->VpRegs->Rdx = 0;
+        }
+        else
+        {
+            UINT64 val = __readmsr(msr);
+            VpState->VpRegs->Rax = val & 0xFFFFFFFF;
+            VpState->VpRegs->Rdx = val >> 32;
+        }
+        break;
+    }
+    case EXIT_REASON_MSR_WRITE:
+    {
+        //
+        // Handle MSR writes. Block Hyper-V synthetic MSRs, pass through rest.
+        //
+        UINT32 msr = (UINT32)VpState->VpRegs->Rcx;
+        if (msr < 0x40000000 || msr > 0x400000FF)
+        {
+            __writemsr(msr, (VpState->VpRegs->Rdx << 32) | (VpState->VpRegs->Rax & 0xFFFFFFFF));
+        }
+        break;
+    }
     case EXIT_REASON_VMCALL:
     case EXIT_REASON_VMCLEAR:
     case EXIT_REASON_VMLAUNCH:

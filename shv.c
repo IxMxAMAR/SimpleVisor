@@ -69,16 +69,33 @@ ShvLoad (
     //
     // Note that each VP is responsible for freeing its VP data on failure.
     //
-    if (callbackContext.InitCount != ShvOsGetActiveProcessorCount())
+    if (callbackContext.InitCount == 0)
     {
-        ShvOsDebugPrint("The SHV failed to initialize (0x%lX) Failed CPU: %d\n",
+        //
+        // Total failure — no CPUs virtualized
+        //
+        ShvOsDebugPrint("The SHV failed completely (0x%lX) Failed CPU: %d\n",
                         callbackContext.FailureStatus, callbackContext.FailedCpu);
         return callbackContext.FailureStatus;
     }
 
-    //
-    // Indicate success.
-    //
-    ShvOsDebugPrint("The SHV has been installed.\n");
+    if (callbackContext.InitCount != ShvOsGetActiveProcessorCount())
+    {
+        //
+        // Partial success — some CPUs failed but most are virtualized.
+        // Continue anyway. The alternative (leaving zombie hypervisors
+        // on the CPUs that DID succeed) is far worse.
+        //
+        ShvOsDebugPrint("The SHV partially initialized: %d/%d CPUs (failed CPU: %d)\n",
+                        callbackContext.InitCount,
+                        ShvOsGetActiveProcessorCount(),
+                        callbackContext.FailedCpu);
+    }
+    else
+    {
+        ShvOsDebugPrint("The SHV has been installed on all %d CPUs.\n",
+                        callbackContext.InitCount);
+    }
+
     return SHV_STATUS_SUCCESS;
 }

@@ -24,7 +24,7 @@ Environment:
 #pragma warning(disable:4201)
 #pragma warning(disable:4214)
 
-#ifndef __BASE_H__
+#if !defined(MDE_CPU_X64) && !defined(MDE_CPU_IA32) && !defined(__BASE_H__)
 #include <basetsd.h>
 #endif
 #define _INC_MALLOC
@@ -159,7 +159,7 @@ ShvOsGetPhysicalAddress (
     _In_ VOID* BaseAddress
     );
 
-#ifndef __BASE_H__
+#if !defined(MDE_CPU_X64) && !defined(MDE_CPU_IA32) && !defined(__BASE_H__)
 VOID
 ShvOsDebugPrint (
     _In_ const char* Format,
